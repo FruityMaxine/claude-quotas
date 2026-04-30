@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "claude-quotas": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/index.js"]
+    }
+  }
+}

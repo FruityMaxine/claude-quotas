@@ -1,0 +1,48 @@
+{
+  "name": "claude-quotas",
+  "version": "1.0.0",
+  "description": "Claude Code plugin — lets Claude check its own subscription quota (5-hour session & weekly limits) before and during tasks",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "claude-quotas": "dist/index.js"
+  },
+  "files": [
+    "dist/**/*.js",
+    ".claude-plugin/**",
+    ".mcp.json",
+    "skills/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "quota",
+    "usage",
+    "rate-limit",
+    "plugin"
+  ],
+  "author": "FruityMaxine (https://github.com/FruityMaxine)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FruityMaxine/claude-quotas.git"
+  },
+  "homepage": "https://github.com/FruityMaxine/claude-quotas#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

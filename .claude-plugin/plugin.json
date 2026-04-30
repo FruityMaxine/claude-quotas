@@ -1,0 +1,11 @@
+{
+  "name": "claude-quotas",
+  "description": "Check Claude subscription quota (5-hour session & weekly limits) — a tool for Claude, by Claude",
+  "version": "1.0.0",
+  "author": {
+    "name": "FruityMaxine",
+    "url": "https://github.com/FruityMaxine"
+  },
+  "repository": "https://github.com/FruityMaxine/claude-quotas",
+  "license": "MIT"
+}
