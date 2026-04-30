@@ -19,7 +19,7 @@
   &nbsp;·&nbsp;
   <a href="#%EF%B8%8F-vigilant-by-design"><b>Policy</b></a>
   &nbsp;·&nbsp;
-  <a href="#-comparison-with-similar-tools"><b>Comparison</b></a>
+  <a href="#-how-this-fits-with-other-claude-code-usage-tools"><b>Ecosystem</b></a>
   &nbsp;·&nbsp;
   <a href="#-faq"><b>FAQ</b></a>
   &nbsp;·&nbsp;
@@ -188,19 +188,22 @@ In autonomous (`/loop`) contexts the user is typically away from the keyboard. H
 
 If you'd rather change the policy, edit [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) — every threshold and every behaviour rule lives there in plain English.
 
-## 🆚 Comparison with similar tools
+## 🤝 How this fits with other Claude Code usage tools
 
-`claude-quotas` sits at the intersection of three properties that, together, no other community tool currently offers: **agent-facing self-introspection**, **proactive avoidance before the wall**, and **automatic sleep across the reset**.
+Claude Code already has a healthy ecosystem of mature usage-observation tools. They solve a different problem from this one:
 
-| Project | Audience | Active monitoring | Pre-wall avoidance | Post-wall recovery | `/loop` aware |
-|--------|----------|-------------------|--------------------|--------------------|---------------|
-| **claude-quotas (this project)** | Claude agent (MCP tool) | ✅ During tasks | ✅ ScheduleWakeup across reset | ✅ commit + resume note as fallback | ✅ extra 1% margin |
-| [claude-code-limit-tracker](https://github.com/TylerGallenbeck/claude-code-limit-tracker) | Human (statusline) | ❌ | ❌ | ❌ | ❌ |
-| [wakeclaude](https://github.com/rittikbasu/wakeclaude) | Human (TUI scheduler) | ❌ | ❌ | ✅ Re-fires prompt after reset | ❌ |
-| [claude-wake-up](https://github.com/gaboe/claude-wake-up) | Keep window warm (cron) | ❌ | ❌ | ❌ | ❌ |
-| [Claude Code Routines](https://code.claude.com/docs/en/desktop-scheduled-tasks) (official) | Cron-style session launch | ❌ | ❌ | ❌ | ❌ |
+- [**ccusage**](https://github.com/ryoppippi/ccusage) (~13.6k ⭐) — a CLI that parses Claude Code's local JSONL transcripts to produce per-day, per-month, and per-session reports of tokens consumed and estimated dollar cost.
+- [**Claude-Code-Usage-Monitor**](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor) (~7.9k ⭐) — a real-time terminal monitor with predictions and warnings.
 
-The community has solid coverage for **dashboards for humans**, **scheduled prompt launchers**, and **post-wall recovery**. What was missing was the agent itself reading its own budget mid-task and stepping over the reset before getting cut off — which is what this plugin does.
+Both are designed for **humans** — they give the user a clear picture of historical or current usage so the user can plan. `claude-quotas` does **not** do any of that. It has no statusline rendering, no per-day reports, no cost analytics, no trend predictions, no menubar app. If those are what you want, those projects do them better than this one ever will.
+
+What this plugin does instead: it lets the **Claude agent itself** read its own quota during a multi-step task and follow a policy that wraps up the current unit, commits a checkpoint, and `ScheduleWakeup`-sleeps across the reset before the wall gets hit. It is a tool for the agent, not a dashboard for the user.
+
+So the three projects are complementary rather than competing:
+
+- Historical analysis and cost tracking → `ccusage`
+- Real-time dashboard you watch → `Claude-Code-Usage-Monitor`
+- An agent that manages its own budget during long autonomous tasks → `claude-quotas`
 
 ## 🧩 What's in the tool response
 

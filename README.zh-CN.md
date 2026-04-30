@@ -19,7 +19,7 @@
   &nbsp;·&nbsp;
   <a href="#-警觉策略"><b>警觉策略</b></a>
   &nbsp;·&nbsp;
-  <a href="#-与同类项目对比"><b>对比同类</b></a>
+  <a href="#-与同类工具的关系"><b>生态位</b></a>
   &nbsp;·&nbsp;
   <a href="#-常见问题"><b>常见问题</b></a>
   &nbsp;·&nbsp;
@@ -186,19 +186,22 @@ flowchart LR
 
 完整策略与执行细节见 [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md)。
 
-## 🆚 与同类项目对比
+## 🤝 与同类工具的关系
 
-`claude-quotas` 的核心定位 = **Claude 自检 + 主动避让 + 自动跨过重置**。从这三个维度对比社区中相邻的项目：
+Claude Code 周边已经有几个成熟的用量观测工具，它们解决的是另一个方向的问题：
 
-| 项目 | 服务对象 | 主动监测 | 触限前避让 | 触限后恢复 | `/loop` 感知 |
-|------|----------|----------|------------|------------|--------------|
-| **claude-quotas (本项目)** | Claude Agent (MCP 工具) | ✅ 任务期持续 | ✅ ScheduleWakeup 跨过重置 | ✅ commit + 恢复笔记兜底 | ✅ 阈值额外收紧 1% |
-| [claude-code-limit-tracker](https://github.com/TylerGallenbeck/claude-code-limit-tracker) | 人类用户（statusline） | ❌ | ❌ | ❌ | ❌ |
-| [wakeclaude](https://github.com/rittikbasu/wakeclaude) | 人类用户（TUI 预约） | ❌ | ❌ | ✅ 触限后重发 prompt | ❌ |
-| [claude-wake-up](https://github.com/gaboe/claude-wake-up) | 维持窗口活跃（cron） | ❌ | ❌ | ❌ | ❌ |
-| [Claude Code Routines](https://code.claude.com/docs/en/desktop-scheduled-tasks) (官方) | 定时启动 session | ❌ | ❌ | ❌ | ❌ |
+- [**ccusage**](https://github.com/ryoppippi/ccusage)（约 13.6k ⭐）—— CLI 工具，离线解析 Claude Code 本地 JSONL 转录文件，输出按日 / 月 / 会话维度的 token 数与美元成本报告。
+- [**Claude-Code-Usage-Monitor**](https://github.com/Maciek-roboblog/Claude-Code-Usage-Monitor)（约 7.9k ⭐）—— 终端实时监控，带预测和警告。
 
-简言之，社区现有方案集中在「给人看仪表盘」、「定时跑 prompt」、「触限后被动恢复」三个方向；`claude-quotas` 是目前唯一让 **Claude 在执行过程中自己评估额度并在触限前主动跨过重置点**的方案。
+这两个项目的目标是**让用户清晰地看到自己的用量**，便于做规划。**`claude-quotas` 不做这些事**：它没有 statusline 渲染、没有按日报告、没有成本分析、没有趋势预测、没有菜单栏应用。这些方向上述项目做得更好。
+
+本插件做的是另一件事：让 **Claude Agent 自身**在多步任务中读取自己的额度，并按策略在触墙前完成收尾、提交检查点、用 ScheduleWakeup 跨过 5 小时窗口的重置点。这是给 Agent 用的工具，不是给用户看的仪表盘。
+
+因此三者实际上是互补关系，而不是替代：
+
+- 想看历史用量与成本核算 → `ccusage`
+- 想要实时仪表盘 → `Claude-Code-Usage-Monitor`
+- 想让 Agent 在长任务中自己管预算并跨过重置点 → `claude-quotas`
 
 ## 🧩 工具返回字段
 
