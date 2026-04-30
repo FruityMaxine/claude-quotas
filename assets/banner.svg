@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 380" role="img" aria-label="claude-quotas">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0b0d"/>
+      <stop offset="1" stop-color="#15161a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#d97757"/>
+      <stop offset="1" stop-color="#f0a886"/>
+    </linearGradient>
+    <linearGradient id="track" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#262629"/>
+      <stop offset="1" stop-color="#1a1b1f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.18" cy="0.55" r="0.55">
+      <stop offset="0" stop-color="#d97757" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="#d97757" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="0.6"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="380" fill="url(#bg)"/>
+  <rect width="1280" height="380" fill="url(#glow)"/>
+
+  <g stroke="#1f1f23" stroke-width="1" opacity="0.35">
+    <line x1="0" y1="64" x2="1280" y2="64"/>
+    <line x1="0" y1="128" x2="1280" y2="128"/>
+    <line x1="0" y1="192" x2="1280" y2="192"/>
+    <line x1="0" y1="256" x2="1280" y2="256"/>
+    <line x1="0" y1="320" x2="1280" y2="320"/>
+  </g>
+
+  <g transform="translate(96 110)">
+    <g transform="translate(0 0)">
+      <path d="M 0 80 A 80 80 0 0 1 80 0" stroke="url(#track)" stroke-width="14" fill="none" stroke-linecap="round"/>
+      <path d="M 0 80 A 80 80 0 0 1 50.4 -22.0" stroke="url(#accent)" stroke-width="14" fill="none" stroke-linecap="round" filter="url(#soft)"/>
+      <text x="40" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="22" fill="#f0a886" text-anchor="middle" font-weight="600">38%</text>
+    </g>
+  </g>
+
+  <g transform="translate(330 100)" font-family="ui-sans-serif, -apple-system, Segoe UI, Inter, system-ui, sans-serif">
+    <text x="0" y="0" font-size="78" fill="#fafafa" font-weight="700" letter-spacing="-2.5">claude-quotas</text>
+    <text x="4" y="44" font-size="22" fill="#9a9aa3" font-weight="400" letter-spacing="0.2">A tool for Claude, by Claude — never get cut off mid-task.</text>
+
+    <g transform="translate(4 88)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="15" fill="#c5c5cc">
+      <rect x="0" y="0" width="610" height="138" rx="10" fill="#0e0e10" stroke="#26262b" stroke-width="1"/>
+      <text x="20" y="32"><tspan fill="#6c6c75">$ </tspan><tspan fill="#f0a886">claude</tspan><tspan> /plugin marketplace add FruityMaxine/claude-quotas</tspan></text>
+      <text x="20" y="60"><tspan fill="#6c6c75">$ </tspan><tspan fill="#f0a886">claude</tspan><tspan> /plugin install claude-quotas@claude-quotas</tspan></text>
+      <text x="20" y="98" fill="#7a7a83">5-hour session: <tspan fill="#f0a886">38%</tspan>  |  resets in 2h 15m</text>
+      <text x="20" y="120" fill="#7a7a83">7-day weekly:   <tspan fill="#e85d3a">87%</tspan>  |  resets in 3d 4h</text>
+    </g>
+  </g>
+
+  <g transform="translate(96 332)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" fill="#5b5b63">
+    <text x="0" y="0">MCP · Model Context Protocol</text>
+    <text x="240" y="0" fill="#3a3a40">·</text>
+    <text x="260" y="0">Anthropic OAuth Usage API</text>
+    <text x="500" y="0" fill="#3a3a40">·</text>
+    <text x="520" y="0">Pro · Max 5x · Max 20x</text>
+    <text x="740" y="0" fill="#3a3a40">·</text>
+    <text x="760" y="0">v1.0.0</text>
+  </g>
+</svg>

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "claude-quotas",
+  "description": "A single-plugin marketplace that gives Claude Code a self-introspection tool for its own subscription quota.",
+  "owner": {
+    "name": "FruityMaxine",
+    "email": "donaldholmestte@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "claude-quotas",
+      "source": "./",
+      "description": "Lets Claude check its own 5-hour, weekly, and Opus quota in real time via the Anthropic OAuth usage API.",
+      "version": "1.0.0",
+      "author": {
+        "name": "FruityMaxine"
+      },
+      "homepage": "https://github.com/FruityMaxine/claude-quotas#readme",
+      "repository": "https://github.com/FruityMaxine/claude-quotas",
+      "license": "MIT",
+      "keywords": [
+        "claude",
+        "claude-code",
+        "mcp",
+        "quota",
+        "rate-limit",
+        "anthropic",
+        "self-introspection"
+      ],
+      "category": "observability",
+      "tags": ["mcp", "quota", "session-limit", "weekly-limit"]
+    }
+  ]
+}

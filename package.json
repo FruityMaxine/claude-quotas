@@ -13,10 +13,12 @@
     ".mcp.json",
     "skills/**",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -26,7 +28,9 @@
     "quota",
     "usage",
     "rate-limit",
-    "plugin"
+    "plugin",
+    "anthropic",
+    "marketplace"
   ],
   "author": "FruityMaxine (https://github.com/FruityMaxine)",
   "license": "MIT",
@@ -35,6 +39,9 @@
     "url": "https://github.com/FruityMaxine/claude-quotas.git"
   },
   "homepage": "https://github.com/FruityMaxine/claude-quotas#readme",
+  "bugs": {
+    "url": "https://github.com/FruityMaxine/claude-quotas/issues"
+  },
   "engines": {
     "node": ">=18.0.0"
   },
@@ -43,6 +50,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.7.0"
   }
 }

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "claude-quotas",
   "description": "Check Claude subscription quota (5-hour session & weekly limits) — a tool for Claude, by Claude",
   "version": "1.0.0",
@@ -6,6 +7,15 @@
     "name": "FruityMaxine",
     "url": "https://github.com/FruityMaxine"
   },
+  "homepage": "https://github.com/FruityMaxine/claude-quotas#readme",
   "repository": "https://github.com/FruityMaxine/claude-quotas",
-  "license": "MIT"
+  "license": "MIT",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "mcp",
+    "quota",
+    "rate-limit",
+    "anthropic"
+  ]
 }
