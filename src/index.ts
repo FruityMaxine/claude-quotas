@@ -24,15 +24,17 @@ interface UsageWindow {
 
 interface ExtraUsage {
   is_enabled: boolean;
-  monthly_limit: number;
-  used_credits: number;
+  monthly_limit: number | null;
+  used_credits: number | null;
   utilization: number | null;
+  currency?: string | null;
 }
 
 interface UsageResponse {
   five_hour?: UsageWindow;
   seven_day?: UsageWindow;
-  seven_day_opus?: UsageWindow;
+  seven_day_opus?: UsageWindow | null;
+  seven_day_sonnet?: UsageWindow | null;
   extra_usage?: ExtraUsage;
 }
 
@@ -73,13 +75,21 @@ function formatResetTime(iso: string | null): string {
   const now = new Date();
   const diffMs = d.getTime() - now.getTime();
   if (diffMs <= 0) return "resetting now";
-  const hours = Math.floor(diffMs / 3600000);
-  const minutes = Math.floor((diffMs % 3600000) / 60000);
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
 }
 
-function buildSummary(usage: UsageResponse, subscriptionType: string | null): string {
+function prettifyTier(tier: string | null): string | null {
+  if (!tier) return null;
+  return tier.replace(/^default_claude_/, "").replace(/_/g, " ");
+}
+
+function buildSummary(usage: UsageResponse, tier: string | null): string {
   const lines: string[] = [];
 
   if (usage.five_hour) {
@@ -92,18 +102,25 @@ function buildSummary(usage: UsageResponse, subscriptionType: string | null): st
     lines.push(`7-day weekly:   ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
 
-  if (usage.seven_day_opus) {
+  if (usage.seven_day_opus && usage.seven_day_opus.resets_at) {
     const u = usage.seven_day_opus;
     lines.push(`7-day Opus:     ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
 
-  if (usage.extra_usage?.is_enabled) {
-    const e = usage.extra_usage;
-    lines.push(`Extra usage:    $${e.used_credits}/$${e.monthly_limit} (${e.utilization ?? 0}%)`);
+  if (usage.seven_day_sonnet && usage.seven_day_sonnet.utilization > 0) {
+    const u = usage.seven_day_sonnet;
+    lines.push(`7-day Sonnet:   ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
 
-  if (subscriptionType) {
-    lines.push(`Subscription:   ${subscriptionType}`);
+  if (usage.extra_usage?.is_enabled && usage.extra_usage.monthly_limit != null) {
+    const e = usage.extra_usage;
+    const cur = e.currency === "usd" || !e.currency ? "$" : `${e.currency.toUpperCase()} `;
+    lines.push(`Extra usage:    ${cur}${e.used_credits ?? 0}/${cur}${e.monthly_limit} (${e.utilization ?? 0}%)`);
+  }
+
+  const pretty = prettifyTier(tier);
+  if (pretty) {
+    lines.push(`Plan:           ${pretty}`);
   }
 
   return lines.join("\n");
@@ -113,49 +130,60 @@ function buildSummary(usage: UsageResponse, subscriptionType: string | null): st
 
 const server = new McpServer({
   name: "claude-quotas",
-  version: "1.0.0",
+  version: "1.1.0",
 });
 
-server.tool("check_quota", "Check current Claude subscription quota usage (5-hour session, 7-day weekly, Opus weekly, extra usage) and reset times", {}, async () => {
-  try {
-    const creds = await loadCredentials();
-    const oauth = creds.claudeAiOauth;
+server.tool(
+  "check_quota",
+  "Read-only: returns the user's current Claude Code quota utilization (5-hour session, 7-day weekly, model-specific weekly windows if active, and extra usage) plus reset times. Call ONLY when the user explicitly asks about quota / remaining usage / rate limits, or when they have explicitly told you to check before a long task. Do NOT call proactively, do NOT poll, and do NOT interrupt the user's flow with unsolicited warnings based on the result.",
+  {},
+  async () => {
+    try {
+      const creds = await loadCredentials();
+      const oauth = creds.claudeAiOauth;
 
-    if (!oauth?.accessToken) {
+      if (!oauth?.accessToken) {
+        return {
+          content: [{ type: "text", text: "claude-quotas: not authenticated (no OAuth token in ~/.claude/.credentials.json). User can run `claude login` if they want this tool to work — do not interrupt their current task to tell them." }],
+        };
+      }
+
+      if (oauth.expiresAt && Date.now() > oauth.expiresAt) {
+        return {
+          content: [{ type: "text", text: "claude-quotas: OAuth token has expired. User can run `claude login` to refresh — do not interrupt their current task to tell them." }],
+        };
+      }
+
+      const usage = await fetchUsage(oauth.accessToken);
+      const tier = oauth.rateLimitTier ?? oauth.subscriptionType ?? null;
+      const summary = buildSummary(usage, tier);
+
       return {
-        content: [{ type: "text", text: "Error: No Claude OAuth credentials found. Please run `claude login` first." }],
+        content: [{
+          type: "text",
+          text: JSON.stringify({
+            subscription_type: oauth.subscriptionType ?? "unknown",
+            rate_limit_tier: oauth.rateLimitTier ?? null,
+            five_hour: usage.five_hour ?? null,
+            seven_day: usage.seven_day ?? null,
+            seven_day_opus: usage.seven_day_opus ?? null,
+            seven_day_sonnet: usage.seven_day_sonnet ?? null,
+            extra_usage: usage.extra_usage ?? null,
+            summary,
+          }, null, 2),
+        }],
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{
+          type: "text",
+          text: `claude-quotas: failed to read quota (${msg}). This is a non-critical tool — silently skip and continue with the user's task; do not retry, do not surface this error unless the user explicitly asked to check quota.`,
+        }],
       };
     }
-
-    if (oauth.expiresAt && Date.now() > oauth.expiresAt) {
-      return {
-        content: [{ type: "text", text: "Error: OAuth token has expired. Please run `claude login` to refresh." }],
-      };
-    }
-
-    const usage = await fetchUsage(oauth.accessToken);
-    const summary = buildSummary(usage, oauth.subscriptionType ?? null);
-
-    return {
-      content: [{
-        type: "text",
-        text: JSON.stringify({
-          subscription_type: oauth.subscriptionType ?? "unknown",
-          five_hour: usage.five_hour ?? null,
-          seven_day: usage.seven_day ?? null,
-          seven_day_opus: usage.seven_day_opus ?? null,
-          extra_usage: usage.extra_usage ?? null,
-          summary,
-        }, null, 2),
-      }],
-    };
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      content: [{ type: "text", text: `Error checking quota: ${msg}` }],
-    };
   }
-});
+);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

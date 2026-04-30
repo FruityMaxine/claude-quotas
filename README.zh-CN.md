@@ -38,20 +38,17 @@ Claude Code 同时跑着两条滚动额度线：**5 小时会话窗口** 和 **7
 
 问题在于：当下唯一能看见剩余额度的，是用户你自己——通过 Claude Code 的界面查。**真正在干活的 Claude 自己反而完全看不到这条墙。** 它不知道自己离崩盘还有多远，自然也没法主动调整节奏。
 
-`claude-quotas` 就是来填这个信息差的。它是一个 MCP（Model Context Protocol）工具，让 Claude 自己就能调用 Anthropic 的 OAuth 用量接口，拿到所有窗口的实时利用率。装上之后 Claude 就能：
+`claude-quotas` 就是来填这个信息差的。它给 Claude 加了一个 MCP（Model Context Protocol）工具，**当你开口问的时候**，Claude 才会去查 Anthropic 的 OAuth 用量接口、拿回所有窗口的实时利用率。重点：这插件**默认沉默**——不轮询、不主动监控、不在你工作时跳出来打扰。你问，它才答。
 
-- 接到长任务时**先看看预算够不够**，
-- 越过分级阈值时主动报警，
-- 看到墙近了，建议你拆分、缓冲或者干脆等重置。
-
-> **一句话**：让 Claude 别把自己开下悬崖。
+> **一句话**：给 Claude 装一个"能看见额度"的能力。看不看，你说了算。
 
 ## 🎯 功能亮点
 
-- 🧠 **自检模式** — Claude 自己想查就能查，不用人类掺和。
-- 📊 **四维额度** — 5 小时会话、7 天周额度、7 天 Opus 专用、按量计费的额外用量，全包。
+- 🧠 **按需自检** — 你让 Claude 查它才查，没有定时轮询。
+- 🤫 **默认沉默** — 不主动监控、不主动报警、不打断你正在做的事。
+- 📊 **覆盖每个窗口** — 5 小时会话、7 天周封顶、Opus 周专用、Sonnet 周专用，加上按量计费的额外用量。
 - ⏱️ **重置倒计时** — 每个窗口都附带 "2h 15m 后重置" 这种人话格式。
-- 🪪 **分级阈值** — 内置 `pro`、`max_5x`、`max_20x` 三档差异化告警逻辑。
+- 🪪 **细分档位识别** — API 只给粗粒度的 `pro` / `max`，但插件会读取本地凭证里的 `rate_limit_tier`，自动还原 `max_5x` / `max_20x` 这种细分档位。
 - 🔐 **零额外登录** — 直接复用 `~/.claude/.credentials.json` 里现成的 OAuth 凭证。
 - 📦 **单文件分发** — 用 esbuild 预打包，安装后无需 `npm install`。
 - 🛒 **市场即装即用** — 仓库自带 `marketplace.json`，两条斜杠命令完事。
@@ -68,18 +65,19 @@ Claude Code 同时跑着两条滚动额度线：**5 小时会话窗口** 和 **7
 
 > *"我这周还剩多少额度？"*
 
-Claude 会自动调用工具、整理结果。或者更狠一点，告诉 Claude **每次开始多步任务前都先查一次** `check_quota`。
+Claude 会调用工具、整理结果给你。如果你不问，它就不会查——这是设计本意。
+
+> **想要更严格的"出发前体检"？** 在某次具体任务里告诉 Claude *"开始这次重构前先帮我查一下额度"* 即可。但插件**不会自己**给你做这件事。
 
 ## 📺 你（和 Claude）能看到什么
 
 ```text
 5-hour session: 38% used | resets in 2h 15m
-7-day weekly:   87% used | resets in 3d  4h
-7-day Opus:     12% used | resets in 3d  4h
-Subscription:   max_5x
+7-day weekly:   87% used | resets in 3d 4h
+Plan:           max 5x
 ```
 
-除了这段易读摘要，工具还会回一份完整 JSON：`utilization` 百分比、`resets_at` ISO 8601 时间戳、`subscription_type` 订阅档位、`extra_usage` 额外用量等等，方便 Claude 直接拿来做条件判断。
+除了这段易读摘要，工具还会回一份完整 JSON：`utilization` 百分比、`resets_at` ISO 8601 时间戳、`subscription_type` 粗档位、`rate_limit_tier` 细档位、各模型独立窗口、`extra_usage` 额外用量等等，方便 Claude 拿来做条件判断。
 
 ## 🛠️ 安装姿势
 
@@ -136,28 +134,33 @@ flowchart LR
 
 > **没有新凭证、没有新配置、不收任何遥测。** Token 不出本机；唯一的外网请求就是访问 `api.anthropic.com`。
 
-## 🚦 预警阈值
+## 🤫 默认沉默是设计原则
 
-SKILL 文档指导 Claude 在不同档位下采取不同的报警门槛：
+市面上大部分"额度追踪器"插件都死在过度殷勤——定时轮询、73% 涨到 74% 也要打断你来播报、每个任务开始前先来一段"预算演讲"。**这个插件不一样**。
 
-| 订阅档位 | 报警起点 | 安全余量 |
-|:-------- |:-------- |:--------|
-| `pro`    | ≥ 80%    | ≤ 20%   |
-| `max_5x` | ≥ 96%    | ≤ 4%    |
-| `max_20x`| ≥ 98%    | ≤ 2%    |
+随包附带的 SKILL 明文规定 Claude 必须做到：
 
-为啥三档不一样？因为 Pro 档总盘子小，剩 20% 可能一次大重构就吃完；而 Max 20x 每个百分点对应的实际预算大约是 Pro 的 5 倍——同样剩 5%，对 Max 20x 来说还很从容，没必要早早惊叫。
+- **只在你明确开口时才调** `check_quota`（"查一下额度"、"还剩多少"、"开始 X 之前先查一下"），**绝不主动轮询**。
+- **不打断当前任务**——你没让查的额度，它就不会主动汇报。
+- **错误一律静默**——Token 过期、网络抽风、API 503，Claude 都不会调头去和你 debug 这事；它会跳过、继续干你交代的活。除非你**确实**点名要查额度，否则你压根不会看到这些错误。
+- **最多一句体贴提醒**——只有当你**已经主动问了**额度、且结果恰好 ≥ 90% 时，Claude 可以加一句"（顺便提一下，周额度快满了）"。**没有长篇大论，没有"要不要暂停？"的偏题对话。**
+
+如果你想让它更聒噪、或者自定义报警门槛，全部规则都在 [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) 这一份纯文本里，一改即生效。
+
+> **API 备注**：百分比已经按用户档位归一化——80% 对所有档位都是"你这档位预算的 80%"。所以不用搞分档报警门槛，单一软阈值（≥ 90%）就够用。
 
 ## 🧩 工具返回的字段
 
 | 字段 | 类型 | 说明 |
 |:---- |:---- |:---- |
-| `subscription_type` | `string` | 订阅档位，`pro` / `max_5x` / `max_20x` 等 |
+| `subscription_type` | `string` | API 返回的粗档位：`pro` 或 `max` |
+| `rate_limit_tier` | `string \| null` | 本地凭证里的细档位，例如 `default_claude_max_5x` / `default_claude_max_20x`。要区分 Max 5x 和 Max 20x 必须看这个字段——API 自己分不清。 |
 | `five_hour.utilization` | `number` (0–100) | 5 小时窗口已用百分比 |
 | `five_hour.resets_at` | `string` (ISO 8601) | 5 小时窗口下次重置时间 |
 | `seven_day.utilization` | `number` (0–100) | 7 天周额度已用百分比 |
 | `seven_day.resets_at` | `string` (ISO 8601) | 7 天周窗口下次重置时间 |
-| `seven_day_opus` | `object \| null` | Opus 专用 7 天窗口（Max 档独有） |
+| `seven_day_opus` | `object \| null` | Opus 专用 7 天窗口；档位没有独立 Opus 配额时为 `null` |
+| `seven_day_sonnet` | `object \| null` | Sonnet 专用 7 天窗口；多数档位下未激活（utilization 0、resets_at null） |
 | `extra_usage` | `object \| null` | 按量计费的额外预算状态 |
 | `summary` | `string` | 拼好的多行人话摘要 |
 
@@ -180,10 +183,16 @@ SKILL 文档指导 Claude 在不同档位下采取不同的报警门槛：
 不会。Token 只在 TLS 上发往 `api.anthropic.com`，路径与 Claude Code 日常通信完全相同，无任何第三方中转。
 
 **Q：Token 过期了怎么办？**
-工具会礼貌地报错，提示你跑一下 `claude login`。它不会替你刷新——刷新这事归 Claude Code 自己管。
+工具返回一条非阻塞的提示，并明确指示 Claude **静默跳过**而不是中断你正在做的事。只有当你**主动**让 Claude 查额度时，你才会看到错误。Token 刷新交给 `claude login` 即可，什么时候想刷再刷。
 
-**Q：能关掉那些报警阈值吗？**
-能。阈值全部写在 [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) 里，自由编辑、fork 或者整段删掉都行。
+**Q：Claude 工作时会不会突然蹦出来报告额度？**
+不会。SKILL 明确禁止任何未被请求的额度评论。Claude 只在**你问的时候**查；只有你主动问了、且周/会话窗口已经 ≥ 90% 时，才会顺便加一句简短提醒——并且**只在你问之后**。详见 [默认沉默是设计原则](#-默认沉默是设计原则)。
+
+**Q：我想让它更吵 / 更安静 / 自定义？**
+全部策略都在 [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) 这一份纯英文里。改阈值、删掉提醒、整段重写都行——直接编辑即生效，对 fork 友好。
+
+**Q：明明是 Max 5x，为啥摘要里写 `Plan: max`？**
+API 接口只返回粗粒度的 `pro` / `max`。插件会读你本地 `~/.claude/.credentials.json` 里的 `rate_limit_tier` 字段，恢复成精确档位（`max_5x` / `max_20x`），摘要里展示的就是细档位值。
 
 ## 🗺️ 路线图
 

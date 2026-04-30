@@ -38,20 +38,17 @@ Claude Code enforces two rolling quotas: a **5-hour session window** and a **7-d
 
 Today, the only way to know how much budget Claude has left is for *you* (the human) to ask Claude Code's UI. Claude itself, the agent doing the actual work, has **no idea** how close it is to the wall.
 
-`claude-quotas` fixes that asymmetry. It's a Model Context Protocol (MCP) tool the agent can call on its own, returning real-time utilization for every quota window the Anthropic OAuth API exposes. With this installed, Claude can:
+`claude-quotas` fixes that asymmetry. It's a Model Context Protocol (MCP) tool the agent can call **only when you ask**, returning real-time utilization for every quota window the Anthropic OAuth API exposes. The plugin is deliberately **quiet** — it doesn't poll, doesn't monitor, doesn't pop up unsolicited warnings. You ask, it answers.
 
-- glance at remaining budget **before kicking off a long task**,
-- raise a flag when utilization crosses a tier-aware threshold,
-- recommend pausing or batching when a wall is in sight.
-
-> **TL;DR** — built so Claude doesn't run itself off a cliff.
+> **TL;DR** — gives Claude the *ability* to see its quota. Whether it looks is up to you.
 
 ## 🎯 Features
 
-- 🧠 **Self-introspection** — Claude can query its own usage at will, no human in the loop.
-- 📊 **All four quota dimensions** — 5-hour session, 7-day weekly, 7-day Opus, and pay-as-you-go extra usage.
+- 🧠 **Self-introspection on demand** — Claude can read its own usage when *you* ask it to, not on its own schedule.
+- 🤫 **Quiet by default** — no polling, no proactive warnings, no interrupting your task.
+- 📊 **Every quota window** — 5-hour session, 7-day weekly, Opus weekly, Sonnet weekly, and pay-as-you-go extra usage.
 - ⏱️ **Reset countdowns** — every window comes with a human-readable "resets in 2h 15m" string.
-- 🪪 **Tier-aware thresholds** — built-in warning levels for `pro`, `max_5x`, and `max_20x` plans.
+- 🪪 **Fine-grained plan detection** — uses the `rate_limit_tier` field from your local credentials, so it can distinguish `max_5x` from `max_20x` even though the API only returns coarse `pro` / `max`.
 - 🔐 **Zero extra login** — reuses your existing Claude Code OAuth credentials in `~/.claude/.credentials.json`.
 - 📦 **Single-file bundle** — pre-built with esbuild, no `npm install` required at install time.
 - 🛒 **Marketplace ready** — repository ships its own `marketplace.json`, so two slash commands and you're in.
@@ -68,18 +65,19 @@ That's it. Claude now has a `check_quota` tool. Ask it:
 
 > *"How much of my weekly budget is left?"*
 
-…and Claude will call the tool, then summarise. Or instruct Claude to **always** call `check_quota` before starting any multi-step plan.
+…and Claude will call the tool and summarise. If you don't ask, it stays out of your way — by design.
+
+> **Want a stricter pre-flight check?** You can tell Claude *"check my quota before starting this migration"* in a specific session. The plugin won't do this on its own initiative.
 
 ## 📺 What you (and Claude) get back
 
 ```text
 5-hour session: 38% used | resets in 2h 15m
-7-day weekly:   87% used | resets in 3d  4h
-7-day Opus:     12% used | resets in 3d  4h
-Subscription:   max_5x
+7-day weekly:   87% used | resets in 3d 4h
+Plan:           max 5x
 ```
 
-Plus a structured JSON payload with every raw field — `utilization`, `resets_at` (ISO 8601), `subscription_type`, `extra_usage` — so Claude can reason over it programmatically.
+Plus a structured JSON payload with every raw field — `utilization`, `resets_at` (ISO 8601), `subscription_type`, `rate_limit_tier`, per-model windows, `extra_usage` — so Claude can reason over it programmatically.
 
 ## 🛠️ Installation options
 
@@ -136,30 +134,35 @@ flowchart LR
 
 > **No new credentials, no extra config, no telemetry.** Your token never leaves your machine; the only outbound request is to `api.anthropic.com`.
 
-## 🚦 Warning thresholds
+## 🤫 Quiet by design
 
-The skill instructs Claude to raise a flag when utilization crosses tier-appropriate levels:
+Most "quota tracker" plugins fail by being too eager — they poll on a timer, interrupt your work to announce 73% is now 74%, or start every task with an unsolicited budget speech. This one doesn't.
 
-| Subscription | Warn at | Remaining headroom |
-|:------------ |:------- |:-------------------|
-| `pro`        | ≥ 80%   | ≤ 20%              |
-| `max_5x`     | ≥ 96%   | ≤ 4%               |
-| `max_20x`    | ≥ 98%   | ≤ 2%               |
+The skill that ships with the plugin instructs Claude to:
 
-Reasoning: a Pro user with 20% headroom may already be one big refactor away from the wall. A Max 20x user has roughly 5× more budget per percentage point, so the meaningful "danger zone" sits much closer to the ceiling.
+- **Only invoke `check_quota` when you explicitly ask** ("check my quota", "how much is left", "check before starting X"). No proactive polling.
+- **Never interrupt the current task** to surface quota state you didn't request.
+- **Treat tool errors as silent** — if your token expired or the network is dead, Claude doesn't pivot the conversation to debug it; it just skips and keeps going. You'll only hear about it if you actually asked for a quota check.
+- **At most one short courtesy line** if you *did* ask and the result happens to be ≥ 90%. No multi-paragraph warnings, no "should we pause?" detours.
+
+If you'd rather the plugin be louder, edit [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) — the entire policy lives there in plain English.
+
+> **API note:** utilization is already normalized per plan, so 80% means "80% of *your* plan's budget" whether you're on Pro, Max 5x, or Max 20x. There's no need for tier-specific thresholds — a single soft "≥ 90%" line is plenty.
 
 ## 🧩 What's in the tool response
 
 | Field | Type | Description |
 |:----- |:---- |:----------- |
-| `subscription_type` | `string` | One of `pro`, `max_5x`, `max_20x`, etc. |
+| `subscription_type` | `string` | Coarse plan from the API: `pro` or `max`. |
+| `rate_limit_tier` | `string \| null` | Fine-grained tier from local credentials (e.g. `default_claude_max_5x`, `default_claude_max_20x`). Use this when you need to distinguish Max 5x from Max 20x — the API itself doesn't tell you. |
 | `five_hour.utilization` | `number` (0–100) | % of the 5-hour session used |
 | `five_hour.resets_at` | `string` (ISO 8601) | When the 5-hour window resets |
 | `seven_day.utilization` | `number` (0–100) | % of the 7-day weekly cap used |
 | `seven_day.resets_at` | `string` (ISO 8601) | When the weekly window resets |
-| `seven_day_opus` | `object \| null` | Opus-specific weekly quota (Max plans) |
+| `seven_day_opus` | `object \| null` | Opus-specific weekly window. Often `null` on plans without a separate Opus pool. |
+| `seven_day_sonnet` | `object \| null` | Sonnet-specific weekly window. Often inactive (utilization 0, resets_at null) when no separate Sonnet pool exists. |
 | `extra_usage` | `object \| null` | Pay-as-you-go credit status |
-| `summary` | `string` | Human-readable multi-line summary |
+| `summary` | `string` | Pre-formatted multi-line human-readable summary |
 
 ## 🔐 Privacy & security
 
@@ -180,10 +183,16 @@ No. The OAuth usage endpoint is undocumented. It is, however, the same endpoint 
 The token only travels to `api.anthropic.com` over TLS, exactly as it does for normal Claude Code traffic. No third-party servers are involved.
 
 **Q: What if my token is expired?**
-The tool returns a polite error asking you to run `claude login`. It does not attempt to refresh on your behalf — that's Claude Code's job.
+The tool returns a non-blocking message and Claude is instructed to **silently skip** rather than interrupt your task. You'll only see the error if you explicitly asked to check quota. Run `claude login` whenever convenient.
 
-**Q: Can I disable the warning thresholds?**
-Yes — they live in [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md). Edit, fork, or strip them out entirely.
+**Q: Will Claude pop up quota warnings while I'm working?**
+No. The skill explicitly forbids unsolicited quota commentary. Claude only checks when *you* ask, and only adds an extra one-line heads-up if your weekly or session window is already ≥ 90% — and only after you asked. See [Quiet by design](#-quiet-by-design).
+
+**Q: I want it louder / quieter / customised.**
+The whole policy is plain English in [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md). Bump the threshold, remove the courtesy line, or rewrite the whole thing — fork-friendly.
+
+**Q: Why does it say `Plan: max` when I'm actually on Max 5x?**
+The API only returns coarse `pro` / `max`. The plugin reads `rate_limit_tier` from your local `~/.claude/.credentials.json` to recover the precise tier (`max_5x` / `max_20x`). The summary line will show the fine-grained value automatically.
 
 ## 🗺️ Roadmap
 

@@ -10,8 +10,8 @@
     {
       "name": "claude-quotas",
       "source": "./",
-      "description": "Lets Claude check its own 5-hour, weekly, and Opus quota in real time via the Anthropic OAuth usage API.",
-      "version": "1.0.0",
+      "description": "Lets Claude check its own 5-hour, weekly, Opus, and Sonnet quota in real time via the Anthropic OAuth usage API. Quiet by default — only invokes when you explicitly ask.",
+      "version": "1.1.0",
       "author": {
         "name": "FruityMaxine"
       },
