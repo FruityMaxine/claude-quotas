@@ -17,7 +17,9 @@
   &nbsp;·&nbsp;
   <a href="#-how-it-works"><b>How it works</b></a>
   &nbsp;·&nbsp;
-  <a href="#-warning-thresholds"><b>Thresholds</b></a>
+  <a href="#%EF%B8%8F-vigilant-by-design"><b>Policy</b></a>
+  &nbsp;·&nbsp;
+  <a href="#-comparison-with-similar-tools"><b>Comparison</b></a>
   &nbsp;·&nbsp;
   <a href="#-faq"><b>FAQ</b></a>
   &nbsp;·&nbsp;
@@ -26,7 +28,7 @@
 
 <br />
 
-<p><i>A Claude Code plugin that gives Claude a self-introspection tool for its own subscription quota — so it can warn you <b>before</b> a long task runs out of budget, not after.</i></p>
+<p><i>A Claude Code plugin that gives the Claude agent an MCP tool to read its own subscription quota during long tasks, plus a vigilance policy that gracefully wraps up and uses <code>ScheduleWakeup</code> to sleep through the 5-hour reset — so the agent does not hit the rate limit wall mid-work.</i></p>
 
 </div>
 
@@ -186,6 +188,20 @@ In autonomous (`/loop`) contexts the user is typically away from the keyboard. H
 
 If you'd rather change the policy, edit [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) — every threshold and every behaviour rule lives there in plain English.
 
+## 🆚 Comparison with similar tools
+
+`claude-quotas` sits at the intersection of three properties that, together, no other community tool currently offers: **agent-facing self-introspection**, **proactive avoidance before the wall**, and **automatic sleep across the reset**.
+
+| Project | Audience | Active monitoring | Pre-wall avoidance | Post-wall recovery | `/loop` aware |
+|--------|----------|-------------------|--------------------|--------------------|---------------|
+| **claude-quotas (this project)** | Claude agent (MCP tool) | ✅ During tasks | ✅ ScheduleWakeup across reset | ✅ commit + resume note as fallback | ✅ extra 1% margin |
+| [claude-code-limit-tracker](https://github.com/TylerGallenbeck/claude-code-limit-tracker) | Human (statusline) | ❌ | ❌ | ❌ | ❌ |
+| [wakeclaude](https://github.com/rittikbasu/wakeclaude) | Human (TUI scheduler) | ❌ | ❌ | ✅ Re-fires prompt after reset | ❌ |
+| [claude-wake-up](https://github.com/gaboe/claude-wake-up) | Keep window warm (cron) | ❌ | ❌ | ❌ | ❌ |
+| [Claude Code Routines](https://code.claude.com/docs/en/desktop-scheduled-tasks) (official) | Cron-style session launch | ❌ | ❌ | ❌ | ❌ |
+
+The community has solid coverage for **dashboards for humans**, **scheduled prompt launchers**, and **post-wall recovery**. What was missing was the agent itself reading its own budget mid-task and stepping over the reset before getting cut off — which is what this plugin does.
+
 ## 🧩 What's in the tool response
 
 | Field | Type | Description |
@@ -264,12 +280,8 @@ The whole plugin is one TypeScript file. If you can read JSON and write a regex,
 
 ## 👤 Author
 
-Built by **[FruityMaxine](https://github.com/FruityMaxine)** — because watching a 30-minute refactor die at 99% utilization is worse than not starting it.
+Built by [FruityMaxine](https://github.com/FruityMaxine). If the plugin saved you a session, a ⭐ on the repo is the simplest way to say thanks.
 
-<div align="center">
+---
 
-<br />
-
-<sub>If this saved you a session, a ⭐ on the repo is the cheapest way to say thanks.</sub>
-
-</div>
+<sub>**Keywords**: claude code, claude code plugin, claude code mcp, claude code rate limit, claude code 5 hour limit, claude code weekly limit, claude code quota, claude code auto resume, claude code schedule wakeup, claude code /loop, claude code vigilance, anthropic oauth usage api, claude-quotas marketplace</sub>
