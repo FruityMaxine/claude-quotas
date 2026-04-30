@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/banner.svg" alt="claude-quotas — a tool for Claude, by Claude" width="100%" />
+<img src="./assets/banner.png" alt="claude-quotas — a tool for Claude, by Claude" width="100%" />
 
 <br />
 

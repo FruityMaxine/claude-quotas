@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./assets/banner.svg" alt="claude-quotas — 一个让 Claude 自检额度的工具" width="100%" />
+<img src="./assets/banner.png" alt="claude-quotas — 一个让 Claude 自检额度的工具" width="100%" />
 
 <br />
 
