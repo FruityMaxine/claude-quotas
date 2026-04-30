@@ -10,8 +10,8 @@
     {
       "name": "claude-quotas",
       "source": "./",
-      "description": "Lets Claude check its own 5-hour, weekly, Opus, and Sonnet quota in real time via the Anthropic OAuth usage API. Quiet by default — only invokes when you explicitly ask.",
-      "version": "1.1.0",
+      "description": "Vigilant quota plugin — Claude reads its own 5-hour and weekly quota during long tasks and gracefully ScheduleWakeup-sleeps through the reset instead of hitting the wall mid-work. /loop-aware with extra safety margin.",
+      "version": "1.2.0",
       "author": {
         "name": "FruityMaxine"
       },

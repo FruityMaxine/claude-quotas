@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin.json",
   "name": "claude-quotas",
-  "description": "Check Claude subscription quota (5-hour session & weekly limits) — a quiet tool for Claude, by Claude",
-  "version": "1.1.0",
+  "description": "Vigilant Claude Code quota plugin — Claude reads its own quota during long tasks and gracefully sleeps through the reset instead of hitting the wall mid-work.",
+  "version": "1.2.0",
   "author": {
     "name": "FruityMaxine",
     "url": "https://github.com/FruityMaxine"

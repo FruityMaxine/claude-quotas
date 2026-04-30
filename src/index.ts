@@ -130,12 +130,12 @@ function buildSummary(usage: UsageResponse, tier: string | null): string {
 
 const server = new McpServer({
   name: "claude-quotas",
-  version: "1.1.0",
+  version: "1.2.0",
 });
 
 server.tool(
   "check_quota",
-  "Read-only: returns the user's current Claude Code quota utilization (5-hour session, 7-day weekly, model-specific weekly windows if active, and extra usage) plus reset times. Call ONLY when the user explicitly asks about quota / remaining usage / rate limits, or when they have explicitly told you to check before a long task. Do NOT call proactively, do NOT poll, and do NOT interrupt the user's flow with unsolicited warnings based on the result.",
+  "Read-only: returns the user's current Claude Code quota utilization (5-hour session, 7-day weekly, model-specific weekly windows if active, and extra usage) plus reset times. This is a CHEAP tool you should use VIGILANTLY during multi-step tasks to avoid hitting the wall mid-work. See the check_quota skill for the full vigilance policy: take a baseline reading at the start of any potentially-long task, re-check periodically as utilization grows, and trigger graceful wrap-up + ScheduleWakeup-based sleep when crossing the per-plan thresholds. Errors from this tool are non-critical — silently skip on failure rather than interrupting the user's task.",
   {},
   async () => {
     try {

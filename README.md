@@ -38,17 +38,20 @@ Claude Code enforces two rolling quotas: a **5-hour session window** and a **7-d
 
 Today, the only way to know how much budget Claude has left is for *you* (the human) to ask Claude Code's UI. Claude itself, the agent doing the actual work, has **no idea** how close it is to the wall.
 
-`claude-quotas` fixes that asymmetry. It's a Model Context Protocol (MCP) tool the agent can call **only when you ask**, returning real-time utilization for every quota window the Anthropic OAuth API exposes. The plugin is deliberately **quiet** — it doesn't poll, doesn't monitor, doesn't pop up unsolicited warnings. You ask, it answers.
+`claude-quotas` fixes that asymmetry. It's a Model Context Protocol (MCP) tool the agent uses **vigilantly** during multi-step tasks: take a baseline reading at the start, re-check as utilization grows, and — when crossing per-plan thresholds — gracefully wrap up the current unit, commit a checkpoint, and **`ScheduleWakeup`-sleep through the quota reset** instead of slamming into the wall mid-task.
 
-> **TL;DR** — gives Claude the *ability* to see its quota. Whether it looks is up to you.
+> **TL;DR** — gives Claude the eyes to see its own quota *and* the discipline to ride out the reset, rather than dying in the middle of your refactor.
 
 ## 🎯 Features
 
-- 🧠 **Self-introspection on demand** — Claude can read its own usage when *you* ask it to, not on its own schedule.
-- 🤫 **Quiet by default** — no polling, no proactive warnings, no interrupting your task.
+- 🧠 **Self-introspection** — Claude reads its own usage at any point during a task, not just when you ask.
+- 🛡️ **Vigilant by design** — not "quiet by default", not "noisy by default" — *measured*. Baseline at task start, re-check as the work progresses, act only at threshold zones.
+- 💤 **Auto-sleep through the wall** — at the per-plan sleep threshold, Claude wraps up the current unit, commits a checkpoint, writes a resume note, and `ScheduleWakeup`s through the quota reset (with relay-sleeps for windows longer than the runtime's 1-hour cap). When you come back, the work is already continuing.
+- 🤖 **`/loop`-aware** — knows that autonomous runs don't have a human at the keyboard, so it gets stricter (extra 1% safety margin) when it detects a loop context.
 - 📊 **Every quota window** — 5-hour session, 7-day weekly, Opus weekly, Sonnet weekly, and pay-as-you-go extra usage.
-- ⏱️ **Reset countdowns** — every window comes with a human-readable "resets in 2h 15m" string.
-- 🪪 **Fine-grained plan detection** — uses the `rate_limit_tier` field from your local credentials, so it can distinguish `max_5x` from `max_20x` even though the API only returns coarse `pro` / `max`.
+- 🚦 **Tier-aware thresholds** — Pro alerts at 70%, Max 5x at 94%, Max 20x at 95% (5-hour window) — proportional to how fast each plan burns.
+- ⏱️ **Either-window-can-kill-you logic** — the 5-hour and 7-day caps are independent ceilings; the policy always acts on the more severe of the two.
+- 🪪 **Fine-grained plan detection** — uses the `rate_limit_tier` field from local credentials, so it can distinguish `max_5x` from `max_20x` even though the API only returns coarse `pro` / `max`.
 - 🔐 **Zero extra login** — reuses your existing Claude Code OAuth credentials in `~/.claude/.credentials.json`.
 - 📦 **Single-file bundle** — pre-built with esbuild, no `npm install` required at install time.
 - 🛒 **Marketplace ready** — repository ships its own `marketplace.json`, so two slash commands and you're in.
@@ -61,13 +64,15 @@ Today, the only way to know how much budget Claude has left is for *you* (the hu
 /plugin install claude-quotas@claude-quotas
 ```
 
-That's it. Claude now has a `check_quota` tool. Ask it:
+That's it. Claude now has a `check_quota` tool plus a vigilance policy in the bundled skill. From this point on:
 
-> *"How much of my weekly budget is left?"*
+- For any non-trivial task, Claude takes a **baseline reading** at the start.
+- It re-checks **periodically** during the work, calibrated by burn rate.
+- If utilization crosses your plan's **alert zone**, it stays vigilant.
+- If it crosses the **sleep zone**, it wraps up gracefully, commits, writes a resume note, and `ScheduleWakeup`-sleeps through the reset.
+- For long autonomous runs (`/loop`), it lowers the trigger by an extra 1% as safety margin.
 
-…and Claude will call the tool and summarise. If you don't ask, it stays out of your way — by design.
-
-> **Want a stricter pre-flight check?** You can tell Claude *"check my quota before starting this migration"* in a specific session. The plugin won't do this on its own initiative.
+You can also just ask: *"how much of my weekly budget is left?"* and Claude will call the tool directly and answer.
 
 ## 📺 What you (and Claude) get back
 
@@ -134,20 +139,52 @@ flowchart LR
 
 > **No new credentials, no extra config, no telemetry.** Your token never leaves your machine; the only outbound request is to `api.anthropic.com`.
 
-## 🤫 Quiet by design
+## 🛡️ Vigilant by design
 
-Most "quota tracker" plugins fail by being too eager — they poll on a timer, interrupt your work to announce 73% is now 74%, or start every task with an unsolicited budget speech. This one doesn't.
+Most "quota tracker" plugins fail in one of two ways: too eager (polling, interrupting, repeated nags) or too passive (the agent doesn't notice the wall coming until it hits it). This one aims for the middle: **measured vigilance** with concrete actions tied to concrete thresholds.
 
-The skill that ships with the plugin instructs Claude to:
+### The three zones
 
-- **Only invoke `check_quota` when you explicitly ask** ("check my quota", "how much is left", "check before starting X"). No proactive polling.
-- **Never interrupt the current task** to surface quota state you didn't request.
-- **Treat tool errors as silent** — if your token expired or the network is dead, Claude doesn't pivot the conversation to debug it; it just skips and keeps going. You'll only hear about it if you actually asked for a quota check.
-- **At most one short courtesy line** if you *did* ask and the result happens to be ≥ 90%. No multi-paragraph warnings, no "should we pause?" detours.
+The skill defines three zones based on `utilization` (already-used %), per plan:
 
-If you'd rather the plugin be louder, edit [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) — the entire policy lives there in plain English.
+#### 5-hour window
 
-> **API note:** utilization is already normalized per plan, so 80% means "80% of *your* plan's budget" whether you're on Pro, Max 5x, or Max 20x. There's no need for tier-specific thresholds — a single soft "≥ 90%" line is plenty.
+| Plan | Alert zone | Sleep + Wrap-up zone |
+|:-----|:-----------|:---------------------|
+| **Pro**       | `utilization ≥ 70%` | `utilization ≥ 95%` |
+| **Max 5x**    | `utilization ≥ 94%` | `utilization ≥ 98%` |
+| **Max 20x**   | `utilization ≥ 95%` | `utilization ≥ 99%` |
+
+#### 7-day window
+
+| Plan | Alert zone | Wrap-up + STOP zone (no sleep) |
+|:-----|:-----------|:-------------------------------|
+| **Pro**       | `utilization ≥ 95%` | `utilization ≥ 99%` |
+| **Max 5x**    | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
+| **Max 20x**   | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
+
+> The 7-day window can't be slept through — its reset is days away. So when it reaches the stop zone, Claude wraps up, writes a resume note, and reports back to you instead of trying to sleep.
+
+### What happens at the sleep zone (5h)
+
+When the 5-hour window crosses the per-plan sleep threshold, Claude does **all of this** in order, then ends the turn:
+
+1. **Wraps up the current minimal complete unit of work.** No half-edited functions, no broken syntax, no missing braces. Maximize productive output up to the wall — but never leave the codebase in a non-compiling state.
+2. **`git commit`s a checkpoint** (no push — pushing is a shared-state action).
+3. **Writes a resume note** at `docs/progress/quota-resume.md` with: task summary, completed subtasks, the next concrete subtask (with file paths and line numbers), and any in-flight design context.
+4. **`ScheduleWakeup`s** with `delaySeconds = secondsUntilReset` (capped at 3600s by runtime). On wake-up, Claude re-checks `check_quota`; if the window hasn't reset yet, it relay-sleeps another segment (up to 6 segments total).
+
+When you come back, your task is either done or right where you left it — never a half-broken file with the agent stuck on a "use extra credits or wait?" dialog.
+
+### Either-window-can-kill-you logic
+
+Both windows are independent ceilings — crossing either one ends the session. So the skill always evaluates **both** windows on every check and acts on the **more severe** zone. Special case: if the 7d window is in the stop zone but 5h has room, **sleep is forbidden** (sleeping a few hours can't save a multi-day window).
+
+### `/loop` awareness
+
+In autonomous (`/loop`) contexts the user is typically away from the keyboard. Hitting the wall there pops a blocking dialog that does **not** auto-dismiss when the quota resets — meaning the loop is dead until the user comes back manually. To prevent this, the skill **lowers each sleep threshold by ~1%** when it detects a loop context. The cost of an extra 1% margin is much smaller than the cost of a dead overnight loop.
+
+If you'd rather change the policy, edit [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md) — every threshold and every behaviour rule lives there in plain English.
 
 ## 🧩 What's in the tool response
 
@@ -183,16 +220,19 @@ No. The OAuth usage endpoint is undocumented. It is, however, the same endpoint 
 The token only travels to `api.anthropic.com` over TLS, exactly as it does for normal Claude Code traffic. No third-party servers are involved.
 
 **Q: What if my token is expired?**
-The tool returns a non-blocking message and Claude is instructed to **silently skip** rather than interrupt your task. You'll only see the error if you explicitly asked to check quota. Run `claude login` whenever convenient.
+The tool returns a non-blocking message and the skill instructs Claude to **silently skip** rather than interrupt your task. You'll only see the error if you explicitly asked for a quota check. Run `claude login` whenever convenient.
 
-**Q: Will Claude pop up quota warnings while I'm working?**
-No. The skill explicitly forbids unsolicited quota commentary. Claude only checks when *you* ask, and only adds an extra one-line heads-up if your weekly or session window is already ≥ 90% — and only after you asked. See [Quiet by design](#-quiet-by-design).
+**Q: Will Claude blast me with quota warnings while I'm working?**
+No. Vigilance ≠ noise. Claude takes silent baseline readings and re-checks during work, but only takes visible action at threshold zones. In Alert zone, at most a single short transition note. At the Sleep zone, the wrap-up sequence speaks for itself.
 
-**Q: I want it louder / quieter / customised.**
-The whole policy is plain English in [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md). Bump the threshold, remove the courtesy line, or rewrite the whole thing — fork-friendly.
+**Q: What if `ScheduleWakeup` doesn't fire?**
+That's why the wrap-up sequence does **all three**: commit + resume note + ScheduleWakeup. Even if the wake-up fails (system reboot, session ended, etc.), you have a clean commit and a `docs/progress/quota-resume.md` you can hand back to Claude with "continue from here". The wake-up is an optimization, not a single point of failure.
+
+**Q: I want different thresholds / different behaviour.**
+The whole policy is plain English in [`skills/check-quota/SKILL.md`](./skills/check-quota/SKILL.md). Edit the threshold tables, change the wrap-up steps, disable the loop-strictness bump — fork-friendly.
 
 **Q: Why does it say `Plan: max` when I'm actually on Max 5x?**
-The API only returns coarse `pro` / `max`. The plugin reads `rate_limit_tier` from your local `~/.claude/.credentials.json` to recover the precise tier (`max_5x` / `max_20x`). The summary line will show the fine-grained value automatically.
+The API only returns coarse `pro` / `max`. The plugin reads `rate_limit_tier` from your local `~/.claude/.credentials.json` to recover the precise tier (`max_5x` / `max_20x`). The summary line shows the fine-grained value automatically.
 
 ## 🗺️ Roadmap
 
