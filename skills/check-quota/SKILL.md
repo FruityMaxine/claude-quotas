@@ -71,6 +71,9 @@ Look at `rate_limit_tier`. Then apply the matching row.
 If the tier string isn't in this table (unknown plan), default to the Pro row
 — it's the most conservative.
 
+If `utilization` is reported outside `[0, 100]` (e.g. `null`, `NaN`, or out
+of range), treat it as `100` and apply the most conservative zone.
+
 ## The "either-window-can-kill-you" rule
 
 **Both windows are independent ceilings. Crossing either one ends the
@@ -82,6 +85,7 @@ zone, and **always act on the more severe one**.
 | Baseline | Baseline | Normal work |
 | Alert | Baseline | 5h alert mode |
 | Baseline | Alert | 7d alert mode |
+| Alert | Alert | Alert mode (either trigger is enough) |
 | Sleep zone | Baseline / Alert | **5h sleep route** (see below) |
 | Baseline / Alert | Wrap-up + STOP | **7d stop route** (see below) — **NO sleep**, sleep can't save a multi-day window |
 | Sleep zone | Wrap-up + STOP | **7d stop route** wins — sleep is forbidden because the 7d window won't reset in any reasonable wake-up |
@@ -103,6 +107,9 @@ you are just observing how much each subtask actually costs.
 - Mention the situation to the user only if they ask, or in a single short
   line at the moment you transition into Alert mode if relevant. No
   repeated reminders.
+- Alert mode persists until either you cross into the Sleep zone (or 7d
+  stop zone), or the relevant window resets — `utilization` never decreases
+  on its own.
 
 ### Sleep + Wrap-up mode (5h window crossed sleep zone)
 
@@ -122,42 +129,38 @@ Sequence — do **all** of these, in order:
      largest complete unit you can finish, not the smallest.
    - **Never leave the codebase in a half-broken state** (syntax error,
      unbalanced braces, missing import, half-typed function signature).
-2. **Commit a checkpoint.** `git add -A && git commit -m "wip: pausing at
-   quota wrap-up, will resume after reset"`. Don't push. Per the user's
-   global rules, never include any `Co-Authored-By` trailer.
-3. **Write a resume note** at `docs/progress/quota-resume.md` (overwriting
-   any previous one). Contents:
-   - Current task summary in 1-2 sentences.
-   - Subtasks completed (bullets).
-   - Next subtask to do, in concrete enough detail that future-you can pick
-     it up cold (file paths, function names, line numbers).
-   - Any in-flight design decisions that aren't yet in code.
-4. **Schedule the wake-up.** Compute `delaySeconds = max(60, secondsUntil(
-   five_hour.resets_at))`. The runtime caps at 3600 seconds — if the
-   computed delay is longer, use 3600 and plan to relay-sleep on wake (see
-   below). Call `ScheduleWakeup` with the prompt template in the next
-   section. **This call ends the current turn**, so make sure steps 1–3
-   are done first.
+2. **Schedule the wake-up.** Compute
+   `delaySeconds = max(60, secondsUntil(five_hour.resets_at) + 60)` — the
+   `+ 60` is a safety buffer for off-by-a-few-seconds reset timing on the
+   API side; waking one minute late is harmless, but waking one second
+   early forces a wasted relay segment. The runtime caps at 3600 seconds;
+   if the computed delay is longer, use 3600 and plan to relay-sleep on
+   wake (see below). Call `ScheduleWakeup` with the prompt template in
+   the next section. **This call ends the current turn**, so make sure
+   step 1 is done first. Your prior conversation context is preserved
+   into the woken turn — there is no need to write any state to disk.
 
 #### Wake-up prompt template
 
 When calling `ScheduleWakeup`, use this `prompt`:
 
 ```
-[claude-quotas: woken from quota-protective sleep — relay segment]
+[claude-quotas: woken from quota-protective sleep — segment 1 of up to 6]
 
 You scheduled this wake-up to ride out a 5-hour quota window. On waking:
 
 1. Call check_quota immediately.
 2. If the 5-hour window has reset (utilization back to a low number),
-   read docs/progress/quota-resume.md and continue from "next subtask".
+   continue the original task from where you paused — your prior
+   conversation context is still available in this session.
 3. If it has NOT reset yet (still in sleep zone), the runtime probably
-   capped the previous segment at 3600s. ScheduleWakeup again with
-   delaySeconds = max(60, secondsUntil(five_hour.resets_at)) and the
-   same prompt template. Do not start work yet.
-4. Cap relay sleeps at 6 segments total. If you're still not reset after
-   6 segments, write a note to the user in docs/progress/quota-resume.md
-   explaining the situation, then stop instead of sleeping again.
+   capped the previous segment at 3600s. Read the segment number in
+   this prompt's first line. If it is less than 6, ScheduleWakeup again
+   with delaySeconds = max(60, secondsUntil(five_hour.resets_at) + 60),
+   reusing this template but bumping the segment number to N+1. Do not
+   start work yet.
+4. If the segment number is already 6 and the window still has not
+   reset, stop and report to the user instead of sleeping again.
 
 Original task summary: <one-line summary of the task you were doing>
 ```
@@ -169,12 +172,13 @@ prompt to you on wake-up; you must read step 1 and act.
 
 The 7-day window can't be slept through (resets are days away).
 
-1. Same wrap-up as above (steps 1–3 of the sleep route): minimal complete
-   unit, commit, resume note.
+1. Same wrap-up as above (step 1 of the sleep route): minimal complete unit.
 2. **Do NOT call ScheduleWakeup.** Sleeping for days is not viable.
 3. End the turn with a clear message to the user: weekly cap is at X%,
-   resets in Y days, you can either switch to extra/paid usage, switch
-   models, or pause until reset.
+   resets in Y days. Suggested options:
+   - If `extra_usage.is_enabled` is `true`, switching to extra/paid usage
+     is available.
+   - Otherwise, switch models or pause until the reset.
 
 ## /loop and autonomous mode — extra strict
 
@@ -183,8 +187,11 @@ is likely not at the keyboard, possibly for hours), **be more conservative**:
 
 - Take a baseline `check_quota` at the start of every loop iteration that
   involves real work.
-- Lower the de-facto Sleep zone trigger by ~1% relative to the table above.
-  E.g. on Max 5x, treat `utilization ≥ 97%` as Sleep zone instead of 98%.
+- Lower the de-facto Sleep zone trigger by ~1% relative to the table above:
+  - Pro: `utilization ≥ 94%` (instead of 95%)
+  - Max 5x: `utilization ≥ 97%` (instead of 98%)
+  - Max 20x: `utilization ≥ 98%` (instead of 99%)
+
   The cost of one missed wake-up is far higher than the cost of an extra
   1% safety margin.
 - If you ever find yourself uncertain whether the user is at the keyboard,
@@ -213,10 +220,9 @@ The user's primary task always takes precedence over this tool's health.
   Silent observation, action only at thresholds.
 - Do not use Bash `sleep` to wait out a quota window — Bash blocks the
   current turn and is capped at minutes, not hours. Use `ScheduleWakeup`.
-- Do not push commits to remote during wrap-up. `git commit` only.
-  Pushing is a shared-state action that needs user authorization.
-- Do not skip the resume note. The note is the safety net if the wake-up
-  doesn't fire; without it the user has no way to recover gracefully.
+- Do not write any "resume note" / progress log file to disk for the
+  wake-up flow — your conversation context survives the wake-up, and
+  unsolicited files in the user's project directory are noise.
 
 ## Privacy note
 

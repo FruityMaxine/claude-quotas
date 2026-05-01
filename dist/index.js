@@ -21754,7 +21754,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 var USAGE_API = "https://api.anthropic.com/api/oauth/usage";
-var USER_AGENT = "claude-quotas/1.0.0";
+var USER_AGENT = "claude-quotas/1.3.0";
 function getCredentialsPath() {
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   return join(configDir, ".credentials.json");
@@ -21765,21 +21765,27 @@ async function loadCredentials() {
   return JSON.parse(raw);
 }
 async function fetchUsage(token) {
-  const resp = await fetch(USAGE_API, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-      Authorization: `Bearer ${token}`,
-      "anthropic-beta": "oauth-2025-04-20"
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8e3);
+  try {
+    const resp = await fetch(USAGE_API, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+        Authorization: `Bearer ${token}`,
+        "anthropic-beta": "oauth-2025-04-20"
+      },
+      signal: controller.signal
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Usage API returned ${resp.status}: ${body}`);
     }
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Usage API returned ${resp.status}: ${body}`);
+    return await resp.json();
+  } finally {
+    clearTimeout(timeoutId);
   }
-  return await resp.json();
 }
 function formatResetTime(iso) {
   if (!iso) return "unknown";
@@ -21788,6 +21794,7 @@ function formatResetTime(iso) {
   const diffMs = d.getTime() - now.getTime();
   if (diffMs <= 0) return "resetting now";
   const totalMinutes = Math.floor(diffMs / 6e4);
+  if (totalMinutes < 1) return "<1m";
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor(totalMinutes % 1440 / 60);
   const minutes = totalMinutes % 60;
@@ -21813,13 +21820,13 @@ function buildSummary(usage, tier) {
     const u = usage.seven_day_opus;
     lines.push(`7-day Opus:     ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
-  if (usage.seven_day_sonnet && usage.seven_day_sonnet.utilization > 0) {
+  if (usage.seven_day_sonnet && usage.seven_day_sonnet.resets_at) {
     const u = usage.seven_day_sonnet;
     lines.push(`7-day Sonnet:   ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
   if (usage.extra_usage?.is_enabled && usage.extra_usage.monthly_limit != null) {
     const e = usage.extra_usage;
-    const cur = e.currency === "usd" || !e.currency ? "$" : `${e.currency.toUpperCase()} `;
+    const cur = !e.currency || e.currency.toLowerCase() === "usd" ? "$" : `${e.currency.toUpperCase()} `;
     lines.push(`Extra usage:    ${cur}${e.used_credits ?? 0}/${cur}${e.monthly_limit} (${e.utilization ?? 0}%)`);
   }
   const pretty = prettifyTier(tier);
@@ -21830,7 +21837,7 @@ function buildSummary(usage, tier) {
 }
 var server = new McpServer({
   name: "claude-quotas",
-  version: "1.2.0"
+  version: "1.3.0"
 });
 server.tool(
   "check_quota",

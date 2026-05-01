@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const USAGE_API = "https://api.anthropic.com/api/oauth/usage";
-const USER_AGENT = "claude-quotas/1.0.0";
+const USER_AGENT = "claude-quotas/1.3.0";
 
 interface Credentials {
   claudeAiOauth?: {
@@ -50,23 +50,29 @@ async function loadCredentials(): Promise<Credentials> {
 }
 
 async function fetchUsage(token: string): Promise<UsageResponse> {
-  const resp = await fetch(USAGE_API, {
-    method: "GET",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      "User-Agent": USER_AGENT,
-      Authorization: `Bearer ${token}`,
-      "anthropic-beta": "oauth-2025-04-20",
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const resp = await fetch(USAGE_API, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        "User-Agent": USER_AGENT,
+        Authorization: `Bearer ${token}`,
+        "anthropic-beta": "oauth-2025-04-20",
+      },
+      signal: controller.signal,
+    });
 
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Usage API returned ${resp.status}: ${body}`);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Usage API returned ${resp.status}: ${body}`);
+    }
+
+    return (await resp.json()) as UsageResponse;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return (await resp.json()) as UsageResponse;
 }
 
 function formatResetTime(iso: string | null): string {
@@ -76,6 +82,7 @@ function formatResetTime(iso: string | null): string {
   const diffMs = d.getTime() - now.getTime();
   if (diffMs <= 0) return "resetting now";
   const totalMinutes = Math.floor(diffMs / 60000);
+  if (totalMinutes < 1) return "<1m";
   const days = Math.floor(totalMinutes / 1440);
   const hours = Math.floor((totalMinutes % 1440) / 60);
   const minutes = totalMinutes % 60;
@@ -107,14 +114,14 @@ function buildSummary(usage: UsageResponse, tier: string | null): string {
     lines.push(`7-day Opus:     ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
 
-  if (usage.seven_day_sonnet && usage.seven_day_sonnet.utilization > 0) {
+  if (usage.seven_day_sonnet && usage.seven_day_sonnet.resets_at) {
     const u = usage.seven_day_sonnet;
     lines.push(`7-day Sonnet:   ${u.utilization}% used | resets in ${formatResetTime(u.resets_at)}`);
   }
 
   if (usage.extra_usage?.is_enabled && usage.extra_usage.monthly_limit != null) {
     const e = usage.extra_usage;
-    const cur = e.currency === "usd" || !e.currency ? "$" : `${e.currency.toUpperCase()} `;
+    const cur = !e.currency || e.currency.toLowerCase() === "usd" ? "$" : `${e.currency.toUpperCase()} `;
     lines.push(`Extra usage:    ${cur}${e.used_credits ?? 0}/${cur}${e.monthly_limit} (${e.utilization ?? 0}%)`);
   }
 
@@ -130,7 +137,7 @@ function buildSummary(usage: UsageResponse, tier: string | null): string {
 
 const server = new McpServer({
   name: "claude-quotas",
-  version: "1.2.0",
+  version: "1.3.0",
 });
 
 server.tool(
