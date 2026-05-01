@@ -213,8 +213,8 @@ Claude Code 周边已经有几个成熟的用量观测工具，它们解决的�
 | `five_hour.resets_at` | `string` (ISO 8601) | 5 小时窗口下次重置时间。 |
 | `seven_day.utilization` | `number` (0–100) | 7 天周窗口已用百分比。 |
 | `seven_day.resets_at` | `string` (ISO 8601) | 7 天周窗口下次重置时间。 |
-| `seven_day_opus` | `object \| null` | Opus 专用 7 天窗口；档位无独立 Opus 配额时为 `null`。 |
-| `seven_day_sonnet` | `object \| null` | Sonnet 专用 7 天窗口；多数档位下未激活。 |
+| `seven_day_opus` | `object \| null` | Opus 专用 7 天窗口。返回 `null` 通常表示该账号未暴露此池；返回 `{utilization: 0, resets_at: null}` 这种 dormant 形态表示池存在但本周期未消耗。 |
+| `seven_day_sonnet` | `object \| null` | Sonnet 专用 7 天窗口。返回 `null` 通常表示该账号未暴露此池；返回 `{utilization: 0, resets_at: null}` 这种 dormant 形态表示池存在但本周期未消耗。 |
 | `extra_usage` | `object \| null` | 按量计费额外预算状态。 |
 | `summary` | `string` | 多行人类可读摘要。 |
 

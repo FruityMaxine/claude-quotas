@@ -215,8 +215,8 @@ So the three projects are complementary rather than competing:
 | `five_hour.resets_at` | `string` (ISO 8601) | When the 5-hour window resets |
 | `seven_day.utilization` | `number` (0–100) | % of the 7-day weekly cap used |
 | `seven_day.resets_at` | `string` (ISO 8601) | When the weekly window resets |
-| `seven_day_opus` | `object \| null` | Opus-specific weekly window. Often `null` on plans without a separate Opus pool. |
-| `seven_day_sonnet` | `object \| null` | Sonnet-specific weekly window. Often inactive (utilization 0, resets_at null) when no separate Sonnet pool exists. |
+| `seven_day_opus` | `object \| null` | Opus-specific weekly window. `null` typically means the API didn't surface a pool for this account; a dormant `{utilization: 0, resets_at: null}` means the pool exists but hasn't been consumed in the current 7-day period. |
+| `seven_day_sonnet` | `object \| null` | Sonnet-specific weekly window. `null` typically means the API didn't surface a pool for this account; a dormant `{utilization: 0, resets_at: null}` means the pool exists but hasn't been consumed in the current 7-day period. |
 | `extra_usage` | `object \| null` | Pay-as-you-go credit status |
 | `summary` | `string` | Pre-formatted multi-line human-readable summary |
 

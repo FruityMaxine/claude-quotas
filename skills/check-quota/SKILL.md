@@ -24,8 +24,8 @@ It returns a JSON object with these fields:
 | `five_hour.resets_at` | ISO 8601. When the 5-hour window resets. |
 | `seven_day.utilization` | 0–100. Percentage of the 7-day rolling weekly cap already consumed. |
 | `seven_day.resets_at` | ISO 8601. When the weekly window resets. |
-| `seven_day_opus` | Opus-specific weekly window or `null`. |
-| `seven_day_sonnet` | Sonnet-specific weekly window; usually inactive. |
+| `seven_day_opus` | Opus-specific weekly window. `null` = no pool surfaced for this account; `{utilization: 0, resets_at: null}` = pool exists but no consumption in the current period. |
+| `seven_day_sonnet` | Sonnet-specific weekly window. `null` = no pool surfaced for this account; `{utilization: 0, resets_at: null}` = pool exists but no consumption in the current period. |
 | `extra_usage` | Pay-as-you-go credit status; only meaningful when `is_enabled: true`. |
 | `summary` | Pre-formatted multi-line human-readable summary. |
 

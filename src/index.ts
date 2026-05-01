@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const USAGE_API = "https://api.anthropic.com/api/oauth/usage";
-const USER_AGENT = "claude-quotas/1.3.0";
+const USER_AGENT = "claude-quotas/1.3.1";
 
 interface Credentials {
   claudeAiOauth?: {
@@ -137,7 +137,7 @@ function buildSummary(usage: UsageResponse, tier: string | null): string {
 
 const server = new McpServer({
   name: "claude-quotas",
-  version: "1.3.0",
+  version: "1.3.1",
 });
 
 server.tool(

@@ -21754,7 +21754,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 var USAGE_API = "https://api.anthropic.com/api/oauth/usage";
-var USER_AGENT = "claude-quotas/1.3.0";
+var USER_AGENT = "claude-quotas/1.3.1";
 function getCredentialsPath() {
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   return join(configDir, ".credentials.json");
@@ -21837,7 +21837,7 @@ function buildSummary(usage, tier) {
 }
 var server = new McpServer({
   name: "claude-quotas",
-  version: "1.3.0"
+  version: "1.3.1"
 });
 server.tool(
   "check_quota",
