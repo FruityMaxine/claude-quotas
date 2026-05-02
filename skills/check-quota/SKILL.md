@@ -1,5 +1,5 @@
 ---
-description: Provides a `check_quota` MCP tool plus a vigilance policy for managing the user's Claude Code quota during long or multi-step tasks. Use this tool actively to read 5-hour and 7-day utilization, then follow the per-plan thresholds below to decide when to enter alert mode, when to wrap up gracefully, and when to ScheduleWakeup-sleep across a quota reset rather than risk a mid-task interruption.
+description: Provides a `check_quota` MCP tool plus a vigilance policy. ALWAYS INVOKE this skill and call check_quota at the START of every task to take a baseline reading — no exceptions, regardless of task size. Once invoked, follow the per-plan thresholds inside to decide when to enter alert mode, when to wrap up gracefully, and when to ScheduleWakeup-sleep across a quota reset rather than risk a mid-task interruption. Re-check periodically during the task; calibrate frequency by burn rate.
 ---
 
 # claude-quotas — `check_quota` + vigilance policy
@@ -62,11 +62,15 @@ Look at `rate_limit_tier`. Then apply the matching row.
 
 ### 7-day window — by `utilization` (already-used %)
 
-| Tier | Alert zone | Wrap-up + STOP zone (no sleep) |
-|------|------------|-------------------------------|
+| Tier | Alert zone | Wrap-up zone |
+|------|------------|--------------|
 | `default_claude_pro` (Pro) | `utilization ≥ 95%` | `utilization ≥ 99%` |
-| `default_claude_max_5x` (Max 5x) | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
-| `default_claude_max_20x` (Max 20x) | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
+| `default_claude_max_5x` (Max 5x) | `utilization ≥ 98%` | `utilization ≥ 99%` |
+| `default_claude_max_20x` (Max 20x) | `utilization ≥ 98%` | `utilization ≥ 99%` |
+
+The 7d wrap-up zone branches into a **stop route** or a **short-sleep
+route** depending on how close `seven_day.resets_at` is — see "either-
+window-can-kill-you rule" and "7d wrap-up zone" sections below.
 
 If the tier string isn't in this table (unknown plan), default to the Pro row
 — it's the most conservative.
@@ -80,6 +84,10 @@ of range), treat it as `100` and apply the most conservative zone.
 session.** Take the result of `check_quota`, evaluate the 5h zone AND the 7d
 zone, and **always act on the more severe one**.
 
+The 7d wrap-up zone has two sub-routes depending on how soon the 7d window
+resets — short reset (≤ 5h away) is sleep-able; long reset (> 5h away) is
+not. Compute `seven_day_reset_hours = secondsUntil(seven_day.resets_at) / 3600`.
+
 | 5h zone | 7d zone | What to do |
 |---------|---------|------------|
 | Baseline | Baseline | Normal work |
@@ -87,8 +95,10 @@ zone, and **always act on the more severe one**.
 | Baseline | Alert | 7d alert mode |
 | Alert | Alert | Alert mode (either trigger is enough) |
 | Sleep zone | Baseline / Alert | **5h sleep route** (see below) |
-| Baseline / Alert | Wrap-up + STOP | **7d stop route** (see below) — **NO sleep**, sleep can't save a multi-day window |
-| Sleep zone | Wrap-up + STOP | **7d stop route** wins — sleep is forbidden because the 7d window won't reset in any reasonable wake-up |
+| Baseline / Alert | Wrap-up + `7d_reset > 5h` | **7d stop route** — wrap up + report, no sleep |
+| Baseline / Alert | Wrap-up + `7d_reset ≤ 5h` | **7d short-sleep route** — sleep through the 7d reset |
+| Sleep zone | Wrap-up + `7d_reset > 5h` | **7d stop route wins** — sleep forbidden because the 7d reset is too far away |
+| Sleep zone | Wrap-up + `7d_reset ≤ 5h` | **Combined sleep** — sleep target = later of (5h reset, 7d reset) |
 
 ## Mode behaviours
 
@@ -147,20 +157,26 @@ When calling `ScheduleWakeup`, use this `prompt`:
 ```
 [claude-quotas: woken from quota-protective sleep — segment 1 of up to 6]
 
-You scheduled this wake-up to ride out a 5-hour quota window. On waking:
+You scheduled this wake-up to ride out a quota window (5h sleep, 7d
+short-sleep, or both). On waking:
 
-1. Call check_quota immediately.
-2. If the 5-hour window has reset (utilization back to a low number),
-   continue the original task from where you paused — your prior
-   conversation context is still available in this session.
-3. If it has NOT reset yet (still in sleep zone), the runtime probably
-   capped the previous segment at 3600s. Read the segment number in
-   this prompt's first line. If it is less than 6, ScheduleWakeup again
-   with delaySeconds = max(60, secondsUntil(five_hour.resets_at) + 60),
-   reusing this template but bumping the segment number to N+1. Do not
-   start work yet.
-4. If the segment number is already 6 and the window still has not
-   reset, stop and report to the user instead of sleeping again.
+1. Call check_quota immediately. Note: this plugin ships a SessionStart
+   hook that auto-injects a fresh check_quota reading on resume — the
+   data may already be visible in your system reminders, in which case
+   step 1 is satisfied; otherwise call the tool yourself.
+2. If the windows you slept for are now out of their action zones
+   (utilization below the per-plan thresholds above), continue the
+   original task from where you paused — your prior conversation
+   context is still available in this session.
+3. If a relevant window is STILL in its action zone, the runtime probably
+   capped the previous segment at 3600s. Read the segment number in this
+   prompt's first line. If it is less than 6, ScheduleWakeup again with
+   delaySeconds = max(60, secondsUntil(target_resets_at) + 60), where
+   target_resets_at is the still-blocked window's resets_at (or the
+   later of the two if you slept for both). Reuse this template, bump
+   the segment number to N+1. Do not start work yet.
+4. If the segment number is already 6 and a window still has not reset,
+   stop and report to the user instead of sleeping again.
 
 Original task summary: <one-line summary of the task you were doing>
 ```
@@ -168,17 +184,55 @@ Original task summary: <one-line summary of the task you were doing>
 Replace `<one-line summary>` before calling. The runtime delivers this
 prompt to you on wake-up; you must read step 1 and act.
 
-### 7d stop route (7d window in Wrap-up + STOP zone)
+### 7d wrap-up zone — stop route OR short-sleep route
 
-The 7-day window can't be slept through (resets are days away).
+The 7-day window normally can't be slept through (resets are days away).
+But if it happens to be in its last 5 hours, sleeping through is viable
+just like the 5h sleep route — 5h fits within ScheduleWakeup's 6-segment
+relay budget (6 × 3600s ≈ 6h).
 
-1. Same wrap-up as above (step 1 of the sleep route): minimal complete unit.
+**Decision rule**: compute `seconds_until_7d_reset = secondsUntil(seven_day.resets_at)`.
+
+- `seconds_until_7d_reset > 5 * 3600` → **stop route** below.
+- `seconds_until_7d_reset ≤ 5 * 3600` → **short-sleep route** below.
+
+#### Stop route (7d reset more than 5h away)
+
+1. Wrap up the current minimal complete unit (same as 5h sleep route step 1
+   — leave the codebase in a compilable state).
 2. **Do NOT call ScheduleWakeup.** Sleeping for days is not viable.
 3. End the turn with a clear message to the user: weekly cap is at X%,
    resets in Y days. Suggested options:
    - If `extra_usage.is_enabled` is `true`, switching to extra/paid usage
      is available.
    - Otherwise, switch models or pause until the reset.
+
+#### Short-sleep route (7d reset within 5h)
+
+Same shape as the 5h sleep route, but the wake-up target is the 7d reset:
+
+1. Wrap up the current minimal complete unit.
+2. Compute `delaySeconds = max(60, secondsUntil(seven_day.resets_at) + 60)`.
+3. Call `ScheduleWakeup` with the wake-up prompt template (see 5h sleep
+   route section above) — the same template covers both 5h and 7d sleeps.
+
+#### Combined case — both 5h sleep zone AND 7d short-sleep route apply
+
+When both windows need sleeping in one go, target the **later** reset so
+both clear:
+
+```
+delaySeconds = max(
+  60,
+  Math.max(
+    secondsUntil(five_hour.resets_at),
+    secondsUntil(seven_day.resets_at)
+  ) + 60
+)
+```
+
+On wake the LLM checks both windows and decides whether to relay-sleep
+again or resume work.
 
 ## /loop and autonomous mode — extra strict
 

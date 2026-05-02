@@ -49,6 +49,7 @@ Today, the only way to know how much budget Claude has left is for *you* (the hu
 - 🧠 **Self-introspection** — Claude reads its own usage at any point during a task, not just when you ask.
 - 🛡️ **Vigilant by design** — not "quiet by default", not "noisy by default" — *measured*. Baseline at task start, re-check as the work progresses, act only at threshold zones.
 - 💤 **Auto-sleep through the wall** — at the per-plan sleep threshold, Claude wraps up the current unit, commits a checkpoint, writes a resume note, and `ScheduleWakeup`s through the quota reset (with relay-sleeps for windows longer than the runtime's 1-hour cap). When you come back, the work is already continuing.
+- 🔁 **Auto-baseline on resume** — ships a `SessionStart` hook (matcher: `resume`) that re-runs `check_quota` the moment a session resumes (e.g. after a `ScheduleWakeup` wake-up), injecting the fresh utilization summary into the conversation as additional context. Claude sees its post-reset quota state in the very first frame, without depending on the LLM remembering to call the tool.
 - 🤖 **`/loop`-aware** — knows that autonomous runs don't have a human at the keyboard, so it gets stricter (extra 1% safety margin) when it detects a loop context.
 - 📊 **Every quota window** — 5-hour session, 7-day weekly, Opus weekly, Sonnet weekly, and pay-as-you-go extra usage.
 - 🚦 **Tier-aware thresholds** — Pro alerts at 70%, Max 5x at 94%, Max 20x at 95% (5-hour window) — proportional to how fast each plan burns.
@@ -159,13 +160,13 @@ The skill defines three zones based on `utilization` (already-used %), per plan:
 
 #### 7-day window
 
-| Plan | Alert zone | Wrap-up + STOP zone (no sleep) |
-|:-----|:-----------|:-------------------------------|
+| Plan | Alert zone | Wrap-up zone |
+|:-----|:-----------|:-------------|
 | **Pro**       | `utilization ≥ 95%` | `utilization ≥ 99%` |
-| **Max 5x**    | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
-| **Max 20x**   | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
+| **Max 5x**    | `utilization ≥ 98%` | `utilization ≥ 99%` |
+| **Max 20x**   | `utilization ≥ 98%` | `utilization ≥ 99%` |
 
-> The 7-day window can't be slept through — its reset is days away. So when it reaches the stop zone, Claude wraps up, writes a resume note, and reports back to you instead of trying to sleep.
+> The 7-day window normally can't be slept through (resets are days away). **Exception**: if the window happens to be in its last 5 hours, the policy treats it like the 5h window — `ScheduleWakeup`-sleeping through the reset (since 5h fits within ScheduleWakeup's 6-segment relay budget). Otherwise Claude wraps up, writes a resume note, and reports back to you instead of trying to sleep.
 
 ### What happens at the sleep zone (5h)
 
@@ -180,7 +181,7 @@ When you come back, your task is either done or right where you left it — neve
 
 ### Either-window-can-kill-you logic
 
-Both windows are independent ceilings — crossing either one ends the session. So the skill always evaluates **both** windows on every check and acts on the **more severe** zone. Special case: if the 7d window is in the stop zone but 5h has room, **sleep is forbidden** (sleeping a few hours can't save a multi-day window).
+Both windows are independent ceilings — crossing either one ends the session. So the skill always evaluates **both** windows on every check and acts on the **more severe** zone. The 7d wrap-up zone has two sub-routes: if the 7d window is more than 5 hours away from reset, **sleep is forbidden** (sleeping that long isn't viable) and Claude takes the stop route; if it's within 5 hours of reset, Claude sleeps through it just like the 5h sleep route. When both windows need sleeping at once, the wake-up target is the *later* of the two resets so both clear in one go.
 
 ### `/loop` awareness
 
@@ -225,7 +226,7 @@ So the three projects are complementary rather than competing:
 - Reads **only** your local `~/.claude/.credentials.json` (or whatever `CLAUDE_CONFIG_DIR` points at).
 - Sends **one** outbound request, to `api.anthropic.com`, identical to what Claude Code itself sends.
 - Stores **nothing** — no cache, no log file, no analytics.
-- Source is ~150 lines of TypeScript. Auditable in one sitting; see [`src/index.ts`](./src/index.ts).
+- Source is ~230 lines of TypeScript across three files (`src/lib.ts` shared core, `src/index.ts` MCP server, `src/hook-session-start.ts` resume hook). Auditable in one sitting.
 
 ## ❓ FAQ
 
@@ -275,7 +276,7 @@ npm run build
 claude --plugin-dir ./
 ```
 
-The whole plugin is one TypeScript file. If you can read JSON and write a regex, you can ship a feature here.
+The plugin is ~230 lines of TypeScript across three small files plus one SKILL.md and one hooks.json. If you can read JSON and write a regex, you can ship a feature here.
 
 ## 📜 License
 

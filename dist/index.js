@@ -21749,12 +21749,12 @@ var StdioServerTransport = class {
   }
 };
 
-// src/index.ts
+// src/lib.ts
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 var USAGE_API = "https://api.anthropic.com/api/oauth/usage";
-var USER_AGENT = "claude-quotas/1.3.1";
+var USER_AGENT = "claude-quotas/1.4.0";
 function getCredentialsPath() {
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
   return join(configDir, ".credentials.json");
@@ -21835,9 +21835,11 @@ function buildSummary(usage, tier) {
   }
   return lines.join("\n");
 }
+
+// src/index.ts
 var server = new McpServer({
   name: "claude-quotas",
-  version: "1.3.1"
+  version: "1.4.0"
 });
 server.tool(
   "check_quota",

@@ -50,6 +50,7 @@ Claude Code 同时存在两条滚动额度限制：**5 小时会话窗口** 与 
 - 🧠 **任务期主动自检** — Claude 在多步任务执行中持续读取自身用量。
 - 🛡️ **三段式警觉策略** — 基线、警觉、Sleep+收尾，每段对应明确动作。
 - 💤 **ScheduleWakeup 跨重置** — 在分档 sleep 阈值触发后，Claude 完成最小可编译单位、commit 检查点、写恢复笔记，然后调用 `ScheduleWakeup` 跳过窗口重置；单段 1 小时上限会自动接力。
+- 🔁 **会话恢复时自动取基线** — 插件随包提供 `SessionStart` hook（matcher: `resume`），在会话以 resume 模式重启的瞬间（例如 `ScheduleWakeup` 唤醒后）自动重跑 `check_quota`，把最新利用率注入对话上下文。Claude 醒来第一帧就能看到当前额度状态，无需依赖 LLM 主动想起来调用工具。
 - 🤖 **`/loop` 场景额外严格** — 自动化任务下用户可能不在电脑前，触墙弹窗会永久阻塞循环；插件在检测到 loop 上下文时将 sleep 阈值提前 1%。
 - 📊 **覆盖全部窗口** — 5 小时会话、7 天周窗口、Opus 周窗口、Sonnet 周窗口、按量计费额外用量。
 - 🚦 **分档阈值** — Pro / Max 5x / Max 20x 各自的警觉与 Sleep 触发线，与各档位真实容量成比例。
@@ -159,13 +160,13 @@ flowchart LR
 
 ### 7 天窗口
 
-| 计划 | 警觉区 | 收尾后停止区（不睡） |
-|:---- |:------ |:-------------------- |
+| 计划 | 警觉区 | 收尾区 |
+|:---- |:------ |:------ |
 | **Pro**     | `utilization ≥ 95%` | `utilization ≥ 99%` |
-| **Max 5x**  | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
-| **Max 20x** | `utilization ≥ 98%` | `utilization ≥ 99.5%` |
+| **Max 5x**  | `utilization ≥ 98%` | `utilization ≥ 99%` |
+| **Max 20x** | `utilization ≥ 98%` | `utilization ≥ 99%` |
 
-> 7 天窗口的重置间隔以天计，无法通过 ScheduleWakeup 跳过；触发停止区时插件会完成收尾、写恢复笔记，并向用户报告，由用户决定后续处理。
+> 7 天窗口默认无法通过 ScheduleWakeup 跨过——重置间隔以天计。**例外**：当 7 天窗口距离重置不足 5 小时时，策略将其视同 5 小时窗口，调用 `ScheduleWakeup` 跨过重置点（5 小时正好落在 ScheduleWakeup 6 段接力的预算内）。其他情况下，插件完成收尾、写恢复笔记，并向用户报告，由用户决定后续处理。
 
 ### Sleep + 收尾区触发后的执行序列
 
@@ -178,7 +179,7 @@ flowchart LR
 
 ### 双窗口仲裁
 
-每次复查同时评估 5 小时与 7 天两个窗口，按剩余更紧的那个走对应分支。特殊规则：当 7 天窗口位于停止区时，**禁止 sleep**；因为 ScheduleWakeup 无法跨过天级重置。
+每次复查同时评估 5 小时与 7 天两个窗口，按剩余更紧的那个走对应分支。7 天窗口的收尾区分两条子路径：若距离 7 天重置 **大于 5 小时**，sleep 不可行，走停止路径（收尾 + 报告用户）；若距离 7 天重置 **不超过 5 小时**，则像 5 小时窗口一样调用 ScheduleWakeup 跨过去。当两个窗口同时需要 sleep 时，唤醒目标取两个 reset 时间的**较晚者**，确保两个窗口一次性都越过。
 
 ### `/loop` 场景
 
@@ -223,7 +224,7 @@ Claude Code 周边已经有几个成熟的用量观测工具，它们解决的�
 - 仅读取本地 `~/.claude/.credentials.json`（或 `$CLAUDE_CONFIG_DIR` 指向的目录）。
 - 单次出网请求，目标 `api.anthropic.com`，路径与 Claude Code 客户端自身使用的相同。
 - 无缓存、无日志、无任何遥测或第三方上报。
-- 全部源码约 150 行 TypeScript，参见 [`src/index.ts`](./src/index.ts)。
+- 全部源码约 230 行 TypeScript，分为三个小文件：[`src/lib.ts`](./src/lib.ts) 共享核心、[`src/index.ts`](./src/index.ts) MCP server、[`src/hook-session-start.ts`](./src/hook-session-start.ts) resume hook。可在一次坐下时间内审阅完毕。
 
 ## ❓ 常见问题
 
@@ -273,7 +274,7 @@ npm run build
 claude --plugin-dir ./
 ```
 
-主要逻辑集中在单个 TypeScript 文件，策略集中在一份 SKILL.md。代码改动通常较小，策略调整为主。
+代码约 230 行 TypeScript，分布在三个小文件中；策略集中在一份 SKILL.md；hook 配置在 hooks/hooks.json。代码改动通常较小，策略调整为主。
 
 ## 📜 协议
 
